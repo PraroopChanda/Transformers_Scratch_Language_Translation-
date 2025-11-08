@@ -59,33 +59,6 @@ class PositionalEncoding(nn.Module):
         x=x+(self.pe[:,:x.shape[1],:]).requires_grad_(False)  # still (batch, seq_len,d_model)
         return self.dropout(x)
 
-
-class PositionalEncoding(nn.Module):
-
-    def __init__(self, d_model: int, seq_len: int, dropout: float) -> None:
-        super().__init__()
-        self.d_model = d_model
-        self.seq_len = seq_len
-        self.dropout = nn.Dropout(dropout)
-        # Create a matrix of shape (seq_len, d_model)
-        pe = torch.zeros(seq_len, d_model)
-        # Create a vector of shape (seq_len)
-        position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1) # (seq_len, 1)
-        # Create a vector of shape (d_model)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)) # (d_model / 2)
-        # Apply sine to even indices
-        pe[:, 0::2] = torch.sin(position * div_term) # sin(position * (10000 ** (2i / d_model))
-        # Apply cosine to odd indices
-        pe[:, 1::2] = torch.cos(position * div_term) # cos(position * (10000 ** (2i / d_model))
-        # Add a batch dimension to the positional encoding
-        pe = pe.unsqueeze(0) # (1, seq_len, d_model)
-        # Register the positional encoding as a buffer
-        self.register_buffer('pe', pe)
-
-    def forward(self, x):
-        x = x + (self.pe[:, :x.shape[1], :]).requires_grad_(False) # (batch, seq_len, d_model)
-        return self.dropout(x)
-
 '''
 FeedForward Layer --> basically a FCN going from d_model --> 2048 --> d_model
 using RELU activation
@@ -225,7 +198,7 @@ class DecoderBlock(nn.Module):
 
     def forward(self,x,encoder_output,src_mask,tgt_mask):
         x=self.residual_connections[0](x,lambda x:self.self_attention_block(x,x,x,tgt_mask))
-        x=self.residual_connections[1](x,lambda x:self.cross_attention_block(x,encoder_output,encoder_output,src_mask))
+        x=self.residual_connections[1](x,lambda x:self.cross_attention_block(x,encoder_output,encoder_output,src_mask)) ## in this case src mask will mask padding tokens after cross attenion 
         x=self.residual_connections[2](x,self.feed_forward_block)
         return x
 

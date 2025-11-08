@@ -88,6 +88,18 @@ encoding_vector=torch.exp(number_vector*denominator)
 print(encoding_vector.shape)
 
 
+decoder_input=torch.empty(1,1)
+print(f"empty decoder input:",decoder_input)
+
+decoder_input.fill_(32)
+print(f"Filled decoder input:",decoder_input)
+
+next_word=torch.tensor([[42]])
+
+next_decoder_input=torch.cat([decoder_input,next_word],dim=1)
+print(f"this is the next decoder input:{next_decoder_input}")
+
+
 # '''
 # Creating a 1D,2D, 3D  zeros matrix in torch 
 # '''
