@@ -25,6 +25,7 @@ This is a non learnable layer, calculate the positional encodings on basis of se
 seq_len is basically the total number of words/token in a sentence
 After computing, just add the same to no of words in the sentence(seq_length)
 '''
+
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model:int, seq_len:int, dropout:int) ->None:
         super().__init__()
@@ -37,27 +38,53 @@ class PositionalEncoding(nn.Module):
 
         # vector of size (seq_len,1) --> will be used a position in calculating positional encodings
         #adding extra dimension for matrix multiplication
-        positions=torch.arange(0,seq_len).unsqueeze(1)
+        positions=torch.arange(0,seq_len,dtype=torch.float).unsqueeze(1)
 
         div_term=torch.exp(torch.arange(0,d_model,2).float()*(-math.log(10000.0)/d_model)) #(d_model/2)
 
         # applying embeddings --> even using sin and odd using sin
         # matrix mutiplication (seq_len,1)*(d_model/2) ---> broadcasted to (seq_len,1) *(1,d_model/2)
         PositionalEncoding[:,0::2]=torch.sin(positions*div_term)  # sin( position * (10000 ** (2i/d_model))
-        PositionalEncoding[:,1::2]=torch.cos(PositionalEncoding*div_term) # cos( position * (10000 ** (2i/d_model))
+        PositionalEncoding[:,1::2]=torch.cos(positions*div_term) # cos( position * (10000 ** (2i/d_model))
 
         ## adding extra dimension as batch dimension for adding easily --> will automatically broadcast in batch channel during adding in forward
         # (seq_len, d_model) --> (1,seq_len, d_model)
-        PositionalEncoding=PositionalEncoding.unsqueeze(1) 
+        PositionalEncoding=PositionalEncoding.unsqueeze(0) 
 
         ## register in the buffer as we want to save it with the model checkpoint and this is not a learnabale part
         self.register_buffer('pe',PositionalEncoding)
 
     def forward(self,x):
         # here x is (batch, seq_len,d_model)
-        x=x+(self.PositionalEncoding[:,:x.shape(1):]).requires_grad_(False)  # still (batch, seq_len,d_model)
+        x=x+(self.pe[:,:x.shape[1],:]).requires_grad_(False)  # still (batch, seq_len,d_model)
         return self.dropout(x)
 
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model: int, seq_len: int, dropout: float) -> None:
+        super().__init__()
+        self.d_model = d_model
+        self.seq_len = seq_len
+        self.dropout = nn.Dropout(dropout)
+        # Create a matrix of shape (seq_len, d_model)
+        pe = torch.zeros(seq_len, d_model)
+        # Create a vector of shape (seq_len)
+        position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1) # (seq_len, 1)
+        # Create a vector of shape (d_model)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)) # (d_model / 2)
+        # Apply sine to even indices
+        pe[:, 0::2] = torch.sin(position * div_term) # sin(position * (10000 ** (2i / d_model))
+        # Apply cosine to odd indices
+        pe[:, 1::2] = torch.cos(position * div_term) # cos(position * (10000 ** (2i / d_model))
+        # Add a batch dimension to the positional encoding
+        pe = pe.unsqueeze(0) # (1, seq_len, d_model)
+        # Register the positional encoding as a buffer
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + (self.pe[:, :x.shape[1], :]).requires_grad_(False) # (batch, seq_len, d_model)
+        return self.dropout(x)
 
 '''
 FeedForward Layer --> basically a FCN going from d_model --> 2048 --> d_model
@@ -113,9 +140,9 @@ class MultiHeadAttentionBlock(nn.Module):
     def attention(query,key,value, mask,dropout:nn.Dropout):
         #query, key, value -->(batch,h,seq_len,d_k)
         d_k=query.shape[-1]
-        attention_scores=query@key.tranpose(-2,-1)/ math.sqrt(d_k) # (batch,h, seq_len, seq_len)
+        attention_scores=query@key.transpose(-2,-1)/ math.sqrt(d_k) # (batch,h, seq_len, seq_len)
         if mask is not None:
-            attention_scores.masked_fill(mask,1e-9)
+            attention_scores.masked_fill(mask==0,-1e9)
         ##--> take softmax across last dimension    
         attention_scores=attention_scores.softmax(dim=-1) # (batch,h, seq_len, seq_len)
         if dropout is not None:
