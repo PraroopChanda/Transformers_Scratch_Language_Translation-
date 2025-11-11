@@ -5,16 +5,16 @@ from torch.utils.data import Dataset,DataLoader,random_split
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset import BilingualDataset,causal_mask
-from model_code import build_transformer
+from model_1 import build_transformer
 
-from datasets import load_dataset
+from datasets import load_dataset,load_from_disk
 from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
 from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
 
 from pathlib import Path
-from config import get_config,get_weights_file_path
+from config import get_config,get_weights_file_path, latest_weights_file_path
 from  tqdm import tqdm
 import os
 
@@ -140,7 +140,8 @@ def get_or_build_tokenizer(config, ds, lang):
 '''
 
 def get_ds(config):
-     ds_raw=load_dataset('opus_books',f'{config["lang_src"]}-{config["lang_tgt"]}',split='train') ## loading the dataset from hugging face
+     ds_raw = load_from_disk('./data/opus_books_en-it/train')
+     #ds_raw=load_dataset('opus_books',f'{config["lang_src"]}-{config["lang_tgt"]}',split='train') ## loading the dataset from hugging face
 
      # building tokenizers for source and target language
      tokenizer_src=get_or_build_tokenizer(config,ds_raw,config['lang_src'])
@@ -203,24 +204,37 @@ def train_model(config):
 
      optimizer=torch.optim.Adam(model.parameters(),lr=config['lr'],eps=1e-9)
 
-     inital_epoch=0
+     initial_epoch=0
      global_step=0
+     
+     preload = config['preload']
+     model_filename = latest_weights_file_path(config) if preload == 'latest' else get_weights_file_path(config, preload) if preload else None
 
-     if config['preload']:
-          model_filename=get_weights_file_path(config,config['preload'])
-          print(f"preloading model {model_filename}")
-          state=torch.load(model_filename)
+     if model_filename:
+          print(f'Preloading model {model_filename}')
+          state = torch.load(model_filename)
           model.load_state_dict(state['model_state_dict'])
-          inital_epoch=state['epoch']+1
+          initial_epoch = state['epoch'] + 1
           optimizer.load_state_dict(state['optimizer_state_dict'])
-          global_step=state['global_step']
+          global_step = state['global_step']
      else:
-          print('No model to preload, starting from scracth')
+          print('No model to preload, starting from scratch')
+
+     # if config['preload']:
+     #      model_filename=get_weights_file_path(config,config['preload'])
+     #      print(f"preloading model {model_filename}")
+     #      state=torch.load(model_filename)
+     #      model.load_state_dict(state['model_state_dict'])
+     #      inital_epoch=state['epoch']+1
+     #      optimizer.load_state_dict(state['optimizer_state_dict'])
+     #      global_step=state['global_step']
+     # else:
+     #      print('No model to preload, starting from scracth')
 
      ## define the loss function
      loss_fn=nn.CrossEntropyLoss(ignore_index=tokenizer_src.token_to_id('[PAD]'),label_smoothing=0.1).to(device)
 
-     for epoch in range(inital_epoch,config['num_epochs']):
+     for epoch in range(initial_epoch,config['num_epochs']):
           batch_iterator=tqdm(train_loader,desc=f'Processing epoch {epoch:02d}')
           model.train()
 
